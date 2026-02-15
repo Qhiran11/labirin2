@@ -160,147 +160,100 @@ function movePlayer(direction) {
     if (player) player.move(direction);
 }
 
-// --- LOGIKA OPTICAL FLOW (Kamera Navigasi) ---
-let isCameraActive = false;
-let videoElement, processCtx, debugDiv;
-let prevFrameData = null;
-const COMPRESS_W = 40; // Analisis resolusi rendah untuk performa
-const COMPRESS_H = 30;
-const MOVE_THRESHOLD = 50; // Sensitivitas gerakan (total difference)
-const DIR_THRESHOLD = 2; // Ambang batas dx/dy
+// --- LOGIKA GPS TEROPTIMASI ---
+// --- LOGIKA SENSOR FUSION (PEDOMETER & KOMPAS) ---
+let isSensorActive = false;
+let stepCount = 0;
+let lastStepTime = 0;
+let compassHeading = 0; // 0 = Utara
+let lastAcc = { x: 0, y: 0, z: 0 };
+const STEP_THRESHOLD = 12; // Sensitivitas langkah (m/s^2)
+const STEP_DELAY = 500; // Minimal waktu antar langkah (ms)
 
-async function startOpticalTracking() {
-    if (isCameraActive) return;
-
-    videoElement = document.getElementById('cameraFeed');
-    const canvas = document.getElementById('processCanvas');
-    debugDiv = document.getElementById('flow-debug');
-    processCtx = canvas.getContext('2d', { willReadFrequently: true }); // Optimasi baca piksel
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: 'environment', // Kamera belakang
-                width: { ideal: 320 },
-                height: { ideal: 240 },
-                frameRate: { ideal: 30 }
-            }
-        });
-        videoElement.srcObject = stream;
-        isCameraActive = true;
-
-        document.getElementById('startCameraBtn').style.display = 'none';
-        document.getElementById('status-text').innerText = "Kamera Aktif & Melacak!";
-
-        alert("Arahkan kamera ke lantai bertekstur/pola.\nGerakkan HP maju/mundur/kiri/kanan.");
-
-        requestAnimationFrame(trackMovement);
-    } catch (err) {
-        alert("Gagal akses kamera: " + err.message);
-        document.getElementById('status-text').innerText = "Error Kamera";
-        document.getElementById('status-text').style.color = 'red';
-    }
-}
-
-function trackMovement() {
-    if (!isCameraActive) return;
-
-    // 1. Gambar frame video ke canvas kecil (downscale)
-    processCtx.drawImage(videoElement, 0, 0, COMPRESS_W, COMPRESS_H);
-    const currentFrameData = processCtx.getImageData(0, 0, COMPRESS_W, COMPRESS_H);
-
-    if (prevFrameData) {
-        // 2. Bandingkan frame sekarang dengan frame sebelumnya
-        const movement = calculateOpticalFlow(prevFrameData.data, currentFrameData.data);
-
-        // 3. Update Debug Info
-        debugDiv.innerText = `dx: ${movement.dx.toFixed(1)}, dy: ${movement.dy.toFixed(1)}`;
-
-        // 4. Gerakkan Player jika threshold terpenuhi
-        // Note: Gerakan kamera ke kiri = Lantai bergerak ke kanan = Player gerak ke kiri
-        // Jadi arah gerakan sama dengan arah pergeseran kamera (relatif terhadap lantai)
-
-        const SENSITIVITY = 1.0;
-
-        // Batasi frekuensi gerakan agar tidak terlalu cepat
-        if (Date.now() - lastMoveTime > 300) {
-            let moveDir = "";
-
-            // Prioritaskan sumbu dengan gerakan terbesar
-            if (Math.abs(movement.dy) > Math.abs(movement.dx)) {
-                // Gerakan Vertikal
-                // Kamera maju (atas) -> Image flow ke bawah (dy positif) -> Player maju (Up)
-                // Cek ulang logika: Jika kamera maju, lantai di layar turun? Tidak, lantai "mendekat" tapi visual flow tergantung perspektif.
-                // Asumsi umum: Flow ke bawah = Kamera Maju. Flow ke atas = Kamera Mundur.
-                if (movement.dy > DIR_THRESHOLD) moveDir = 'up';
-                else if (movement.dy < -DIR_THRESHOLD) moveDir = 'down';
-            } else {
-                // Gerakan Horizontal
-                // Kamera kiri -> Flow ke kanan (dx positif) -> Player kiri
-                if (movement.dx > DIR_THRESHOLD) moveDir = 'left';
-                else if (movement.dx < -DIR_THRESHOLD) moveDir = 'right';
-            }
-
-            if (moveDir) {
-                movePlayer(moveDir);
-                lastMoveTime = Date.now();
-                // Reset prevFrame agar tidak menumpuk error drift
-                // prevFrameData = currentFrameData; 
-            }
-        }
-    }
-
-    prevFrameData = currentFrameData;
-    requestAnimationFrame(trackMovement);
-}
-
-let lastMoveTime = 0;
-
-// Algoritma Block Matching Sederhana (Hanya Center Block)
-function calculateOpticalFlow(oldPixels, newPixels) {
-    const W = COMPRESS_W;
-    const blockX = 10; // Titik mulai Sample Block
-    const blockY = 10;
-    const blockSize = 20; // Ukuran Block Sample
-
-    // Ambil sampel blok dari tengah frame lama
-    // Cari posisi blok tersebut yang paling cocok di frame baru
-
-    let bestDx = 0;
-    let bestDy = 0;
-    let minDiff = Infinity;
-
-    const searchRange = 8; // Jarak pencarian (pixel)
-
-    for (let dy = -searchRange; dy <= searchRange; dy++) {
-        for (let dx = -searchRange; dx <= searchRange; dx++) {
-
-            let diff = 0;
-            // Hitung perbedaan pixel (SAD - Sum of Absolute Differences)
-            for (let y = 0; y < blockSize; y++) {
-                for (let x = 0; x < blockSize; x++) {
-                    const oldIdx = ((blockY + y) * W + (blockX + x)) * 4; // Grayscale check only green channel
-                    const newIdx = ((blockY + y + dy) * W + (blockX + x + dx)) * 4;
-
-                    // Simple grayscale SAD (Using Green channel as proxy for luminance)
-                    const valOld = oldPixels[oldIdx + 1];
-                    const valNew = newPixels[newIdx + 1];
-
-                    diff += Math.abs(valOld - valNew);
+function requestSensorPermission() {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        // Khusus iOS 13+
+        DeviceMotionEvent.requestPermission()
+            .then(response => {
+                if (response === 'granted') {
+                    startSensors();
+                } else {
+                    alert('Izin sensor ditolak.');
                 }
-            }
-
-            if (diff < minDiff) {
-                minDiff = diff;
-                bestDx = dx;
-                bestDy = dy;
-            }
-        }
+            })
+            .catch(console.error);
+    } else {
+        // Android / Non-iOS
+        startSensors();
     }
-
-    return { dx: bestDx, dy: bestDy };
 }
-// --- END LOGIKA OPTICAL FLOW ---
+
+function startSensors() {
+    if (isSensorActive) return;
+
+    window.addEventListener('deviceorientation', handleOrientation);
+    window.addEventListener('devicemotion', handleMotion);
+
+    isSensorActive = true;
+    document.getElementById('permissionBtn').style.display = 'none'; // Sembunyikan tombol
+    document.getElementById('status-text').innerText = "Sensor Aktif (Mode Langkah)";
+    alert("Sensor Aktif! Putar badan untuk arah, hentakkan kaki untuk jalan.");
+}
+
+function handleOrientation(event) {
+    // alpha: rotasi di sumbu z (0-360), 0 = Utara (biasanya)
+    // webkitCompassHeading: khusus iOS
+    let heading = event.webkitCompassHeading || Math.abs(event.alpha - 360);
+    compassHeading = heading;
+
+    // Update UI
+    document.getElementById('compass-deg').innerText = Math.round(heading);
+    document.getElementById('compass-dir').innerText = getCardinalDirection(heading);
+}
+
+function getCardinalDirection(angle) {
+    const directions = ['U', 'TL', 'T', 'TG', 'S', 'BD', 'B', 'BL'];
+    const index = Math.round(((angle %= 360) < 0 ? angle + 360 : angle) / 45) % 8;
+    return directions[index];
+}
+
+function handleMotion(event) {
+    let acc = event.accelerationIncludingGravity; // Termasuk gravitasi (~9.8)
+    if (!acc) return;
+
+    // Hitung magnitude total
+    let totalAcc = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+
+    // Deteksi puncak (Langkah)
+    let now = Date.now();
+    if (totalAcc > STEP_THRESHOLD && (now - lastStepTime > STEP_DELAY)) {
+        stepCount++;
+        document.getElementById('step-count').innerText = stepCount;
+        lastStepTime = now;
+
+        // Gerakkan pemain sesuai arah kompas
+        movePlayerByCompass();
+    }
+}
+
+function movePlayerByCompass() {
+    // Mapping arah kompas ke Grid (U=Up, T=Right, S=Down, B=Left)
+    // 0 = Utara, 90 = Timur, 180 = Selatan, 270 = Barat
+
+    let dir = "";
+    if (compassHeading >= 315 || compassHeading < 45) dir = "up";
+    else if (compassHeading >= 45 && compassHeading < 135) dir = "right";
+    else if (compassHeading >= 135 && compassHeading < 225) dir = "down";
+    else if (compassHeading >= 225 && compassHeading < 315) dir = "left";
+
+    if (dir) {
+        movePlayer(dir);
+        // Visual feedback (opsional: getar)
+        if (navigator.vibrate) navigator.vibrate(50);
+    }
+}
+// --- END LOGIKA SENSOR ---
+
 function placeAnswers() {
     placedAnswers = [];
     let possibleCells = grid.filter(c => !(c.i === 0 && c.j === 0));
