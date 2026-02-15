@@ -13,6 +13,13 @@ let currentQuestion = {
 };
 let placedAnswers = [];
 
+// KONFIGURASI GPS OPTIMASI
+const METERS_PER_CELL = 5;      // 1 Kotak = 5 Meter (Lebih stabil untuk jalan kaki)
+const ACCURACY_THRESHOLD = 20;  // Abaikan sinyal jika akurasi > 20 meter
+let startLat = null;
+let startLon = null;
+let watchId = null;
+
 // DATA SOAL DAN JAWABAN DEFAULT
 const defaultQuestions = [
     {
@@ -22,8 +29,6 @@ const defaultQuestions = [
     }
 ];
 
-
-// Start everything
 let player;
 
 class Player {
@@ -36,13 +41,12 @@ class Player {
         let x = this.i * w + w / 2;
         let y = this.j * w + w / 2;
 
-        ctx.fillStyle = '#ff00ff'; // Player color (Magenta)
+        ctx.fillStyle = '#ff00ff'; 
         ctx.beginPath();
         ctx.arc(x, y, w / 3, 0, Math.PI * 2);
         ctx.fill();
 
-        // Glow effect
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = 15;
         ctx.shadowColor = "#ff00ff";
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -53,29 +57,14 @@ class Player {
         let nextI = this.i;
         let nextJ = this.j;
 
-        if (dir === 'up') {
-            if (!currentCell.walls[0]) {
-                nextJ--;
-            }
-        } else if (dir === 'right') {
-            if (!currentCell.walls[1]) {
-                nextI++;
-            }
-        } else if (dir === 'down') {
-            if (!currentCell.walls[2]) {
-                nextJ++;
-            }
-        } else if (dir === 'left') {
-            if (!currentCell.walls[3]) {
-                nextI--;
-            }
-        }
+        if (dir === 'up' && !currentCell.walls[0]) nextJ--;
+        else if (dir === 'right' && !currentCell.walls[1]) nextI++;
+        else if (dir === 'down' && !currentCell.walls[2]) nextJ++;
+        else if (dir === 'left' && !currentCell.walls[3]) nextI--;
 
-        // Check bounds (should be handled by walls, but safety check)
         if (nextI >= 0 && nextI < cols && nextJ >= 0 && nextJ < rows) {
             this.i = nextI;
             this.j = nextJ;
-            console.log("Moved to", this.i, this.j);
             checkAnswer();
             draw();
         }
@@ -83,59 +72,33 @@ class Player {
 }
 
 function checkAnswer() {
-    // Check if player is on a cell with an answer
     for (let ans of placedAnswers) {
         if (player.i === ans.i && player.j === ans.j) {
             if (ans.isCorrect) {
-                // Delay slightly to render the move first
                 setTimeout(() => {
                     alert("BENAR! Selamat, Anda menemukan jawaban yang tepat.");
-                    generateMaze(); // New maze
+                    generateMaze();
                 }, 100);
             } else {
                 setTimeout(() => {
                     alert("SALAH! Coba cari jalan lain.");
-                    // Optional: Reset player position to start?
-                    // player.i = 0; 
-                    // player.j = 0;
-                    // draw();
                 }, 100);
             }
         }
     }
 }
 
-
 function setup() {
-    // 1. Get available space from the parent container (.canvas-wrapper)
     const wrapper = document.querySelector('.canvas-wrapper');
-    // We want the maze to fit within the viewport height mostly, minus header/footer
-    // const headerHeight = document.querySelector('header').offsetHeight; // Removed header height calculation as it might vary
-    const footerHeight = 50;
-    const questionHeight = document.getElementById('question-container').offsetHeight;
-
-    // Available height calculation (approximate padding)
-    const availableHeight = window.innerHeight - 300; // Rough estimate for header + footer + padding
+    const availableHeight = window.innerHeight - 320; 
     const availableWidth = wrapper.clientWidth - 20;
 
-    // Choose the smaller dimension to keep it square and fitting
     let size = Math.min(availableWidth, availableHeight);
-
-    // Min size check
     if (size < 300) size = 300;
 
-    // Adjust cell size w based on maze size to keep complexity reasonable
-    // Let's make grid relatively dense but readable
-    // If screen is small, reduce density (larger cells)
-    if (window.innerWidth < 600) {
-        w = 40; // Mobile
-    } else {
-        w = 50; // Desktop
-    }
+    w = (window.innerWidth < 600) ? 40 : 50;
 
-    // Ensure size is a multiple of w
     const adjustedSize = Math.floor(size / w) * w;
-
     canvas.width = adjustedSize;
     canvas.height = adjustedSize;
 
@@ -147,17 +110,13 @@ function setup() {
 
     for (let j = 0; j < rows; j++) {
         for (let i = 0; i < cols; i++) {
-            let cell = new Cell(i, j);
-            grid.push(cell);
+            grid.push(new Cell(i, j));
         }
     }
 
     current = grid[0];
-
-    // Update Question Display
     document.getElementById('question-text').innerText = currentQuestion.question;
 
-    // Generate maze instantly
     while (true) {
         current.visited = true;
         let next = current.checkNeighbors();
@@ -174,10 +133,7 @@ function setup() {
     }
 
     placeAnswers();
-
-    // Create Player
     player = new Player();
-
     draw();
 }
 
@@ -189,13 +145,7 @@ function updateMazeData() {
     const d = document.getElementById('inputD').value;
 
     if (q && a && b && c && d) {
-        currentQuestion = {
-            question: q,
-            answers: [a, b, c, d],
-            correct: a // Asumsi Input A selalu jawaban benar sesuai label
-        };
-        // Shuffle answers for display so "A" isn't always correct positionally?
-        // But for placement logic we just need the string.
+        currentQuestion = { question: q, answers: [a, b, c, d], correct: a };
         generateMaze();
     } else {
         alert("Mohon isi semua kolom input!");
@@ -207,29 +157,22 @@ function generateMaze() {
 }
 
 function movePlayer(direction) {
-    if (player) {
-        player.move(direction);
-    }
+    if (player) player.move(direction);
 }
 
-// GPS Variables
-let startLat = null;
-let startLon = null;
-let watchId = null;
-const METERS_PER_CELL = 2; // Movement scale: 2 meters = 1 cell
-
+// --- LOGIKA GPS TEROPTIMASI ---
 function startGPS() {
     if (!navigator.geolocation) {
         alert("Browser tidak mendukung Geolocation.");
         return;
     }
 
-    const statusText = document.querySelector('#status-text'); // Fix selector if needed
+    const statusText = document.getElementById('status-text');
     if (statusText) statusText.innerText = "Meminta Izin...";
 
     const options = {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 15000,
         maximumAge: 0
     };
 
@@ -238,46 +181,50 @@ function startGPS() {
 
 function gpsSuccess(pos) {
     const crd = pos.coords;
-
     const statusText = document.getElementById('status-text');
+    const accText = document.getElementById('accuracy-text');
+
+    // 1. Tampilkan Akurasi
+    if (accText) accText.innerText = Math.round(crd.accuracy);
+
+    // 2. Filter Akurasi (Abaikan jika sinyal buruk/loncat-loncat)
+    if (crd.accuracy > ACCURACY_THRESHOLD) {
+        if (statusText) {
+            statusText.innerText = "Sinyal Lemah...";
+            statusText.style.color = "orange";
+        }
+        return; 
+    }
+
     if (statusText) {
-        statusText.innerText = "Lacak Aktif";
+        statusText.innerText = "Lacak Aktif (Presisi)";
         statusText.style.color = "#00ffcc";
     }
 
-    const accText = document.getElementById('accuracy-text');
-    if (accText) accText.innerText = Math.round(crd.accuracy);
-
-    // Set start point if not set
+    // 3. Set Titik Awal (Hanya sekali klik)
     if (startLat === null) {
         startLat = crd.latitude;
         startLon = crd.longitude;
-        alert("Titik Awal Ditetapkan! Silakan berjalan.");
+        alert("Titik Awal Terkunci! Silakan berjalan minimal 5 meter.");
+        return;
     }
 
-    // Calculate distance from start
-    // 1 Degree Latitude ~ 111,320 meters
+    // 4. Kalkulasi Jarak (Haversine Approximation)
     const dLatMeters = (crd.latitude - startLat) * 111320;
-
-    // 1 Degree Longitude ~ 111,320 * cos(latitude) meters
     const dLonMeters = (crd.longitude - startLon) * 111320 * Math.cos(startLat * Math.PI / 180);
 
-    // Convert meters to grid cells
-    // +Lat is North (Up in Map), but Y is Down in Canvas. So invert Lat delta.
-    // +Lon is East (Right in Map), same as X in Canvas.
-
-    // Using Math.round to snap to grid
+    // 5. Konversi ke Grid (Gunakan pembulatan untuk smoothing)
     let gridChangeX = Math.round(dLonMeters / METERS_PER_CELL);
-    let gridChangeY = Math.round(-dLatMeters / METERS_PER_CELL); // Invert Y
+    let gridChangeY = Math.round(-dLatMeters / METERS_PER_CELL);
 
-    // Current player pos is relative to start (0,0)
+    // 6. Update Posisi Pemain (Clamp agar tidak keluar labirin)
     let newX = Math.max(0, Math.min(gridChangeX, cols - 1));
     let newY = Math.max(0, Math.min(gridChangeY, rows - 1));
 
-    if (player) {
+    if (player && (player.i !== newX || player.j !== newY)) {
         player.i = newX;
         player.j = newY;
-
+        console.log(`GPS Move: ${player.i}, ${player.j}`);
         checkAnswer();
         draw();
     }
@@ -287,31 +234,18 @@ function gpsError(err) {
     const statusText = document.getElementById('status-text');
     if (statusText) {
         statusText.style.color = "red";
-        if (err.code === 1) {
-            statusText.innerText = "Izin Ditolak";
-        } else if (err.code === 2) {
-            statusText.innerText = "Sinyal Hilang";
-        } else {
-            statusText.innerText = "Error GPS";
-        }
+        statusText.innerText = "GPS Error: " + err.message;
     }
-    console.warn('GPS Error(' + err.code + '): ' + err.message);
 }
-
+// --- END LOGIKA GPS ---
 
 function placeAnswers() {
     placedAnswers = [];
-    let possibleCells = [...grid];
-    possibleCells = possibleCells.filter(c => !(c.i === 0 && c.j === 0) && !(c.i === cols - 1 && c.j === rows - 1));
-
-    // Shuffle possible cells
+    let possibleCells = grid.filter(c => !(c.i === 0 && c.j === 0));
     possibleCells.sort(() => Math.random() - 0.5);
 
-    // Prepare answers (shuffle them so the 'correct' one isn't always first in the array if we iterate)
-    let answersToPlace = [...currentQuestion.answers];
-    answersToPlace.sort(() => Math.random() - 0.5);
+    let answersToPlace = [...currentQuestion.answers].sort(() => Math.random() - 0.5);
 
-    // Place each answer
     for (let i = 0; i < answersToPlace.length; i++) {
         if (possibleCells.length > 0) {
             let cell = possibleCells.pop();
@@ -326,9 +260,7 @@ function placeAnswers() {
 }
 
 function index(i, j) {
-    if (i < 0 || j < 0 || i > cols - 1 || j > rows - 1) {
-        return -1;
-    }
+    if (i < 0 || j < 0 || i > cols - 1 || j > rows - 1) return -1;
     return i + j * cols;
 }
 
@@ -336,7 +268,7 @@ class Cell {
     constructor(i, j) {
         this.i = i;
         this.j = j;
-        this.walls = [true, true, true, true]; // top, right, bottom, left
+        this.walls = [true, true, true, true]; 
         this.visited = false;
     }
 
@@ -347,32 +279,12 @@ class Cell {
         let bottom = grid[index(this.i, this.j + 1)];
         let left = grid[index(this.i - 1, this.j)];
 
-        if (top && !top.visited) {
-            neighbors.push(top);
-        }
-        if (right && !right.visited) {
-            neighbors.push(right);
-        }
-        if (bottom && !bottom.visited) {
-            neighbors.push(bottom);
-        }
-        if (left && !left.visited) {
-            neighbors.push(left);
-        }
+        if (top && !top.visited) neighbors.push(top);
+        if (right && !right.visited) neighbors.push(right);
+        if (bottom && !bottom.visited) neighbors.push(bottom);
+        if (left && !left.visited) neighbors.push(left);
 
-        if (neighbors.length > 0) {
-            let r = Math.floor(Math.random() * neighbors.length);
-            return neighbors[r];
-        } else {
-            return undefined;
-        }
-    }
-
-    highlight() {
-        let x = this.i * w;
-        let y = this.j * w;
-        ctx.fillStyle = '#00ffcc';
-        ctx.fillRect(x, y, w, w);
+        return (neighbors.length > 0) ? neighbors[Math.floor(Math.random() * neighbors.length)] : undefined;
     }
 
     show() {
@@ -381,99 +293,43 @@ class Cell {
         ctx.strokeStyle = '#e0e0e0';
         ctx.lineWidth = 2;
 
-        if (this.walls[0]) {
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(x + w, y);
-            ctx.stroke();
-        }
-        if (this.walls[1]) {
-            ctx.beginPath();
-            ctx.moveTo(x + w, y);
-            ctx.lineTo(x + w, y + w);
-            ctx.stroke();
-        }
-        if (this.walls[2]) {
-            ctx.beginPath();
-            ctx.moveTo(x + w, y + w);
-            ctx.lineTo(x, y + w);
-            ctx.stroke();
-        }
-        if (this.walls[3]) {
-            ctx.beginPath();
-            ctx.moveTo(x, y + w);
-            ctx.lineTo(x, y);
-            ctx.stroke();
-        }
-
-        if (this.visited) {
-            // Draw background for visited cells (optional, maybe distinct from unvisited)
-            // ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-            // ctx.fillRect(x, y, w, w);
-        }
+        if (this.walls[0]) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.stroke(); }
+        if (this.walls[1]) { ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w, y + w); ctx.stroke(); }
+        if (this.walls[2]) { ctx.beginPath(); ctx.moveTo(x + w, y + w); ctx.lineTo(x, y + w); ctx.stroke(); }
+        if (this.walls[3]) { ctx.beginPath(); ctx.moveTo(x, y + w); ctx.lineTo(x, y); ctx.stroke(); }
     }
 }
 
 function removeWalls(a, b) {
     let x = a.i - b.i;
-    if (x === 1) {
-        a.walls[3] = false;
-        b.walls[1] = false;
-    } else if (x === -1) {
-        a.walls[1] = false;
-        b.walls[3] = false;
-    }
+    if (x === 1) { a.walls[3] = false; b.walls[1] = false; }
+    else if (x === -1) { a.walls[1] = false; b.walls[3] = false; }
     let y = a.j - b.j;
-    if (y === 1) {
-        a.walls[0] = false;
-        b.walls[2] = false;
-    } else if (y === -1) {
-        a.walls[2] = false;
-        b.walls[0] = false;
-    }
+    if (y === 1) { a.walls[0] = false; b.walls[2] = false; }
+    else if (y === -1) { a.walls[2] = false; b.walls[0] = false; }
 }
 
 function draw() {
-    // Clear background
-    ctx.fillStyle = '#1a1a1a'; // Match CSS bg-color
+    ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw all cells
-    for (let i = 0; i < grid.length; i++) {
-        grid[i].show();
-    }
+    for (let i = 0; i < grid.length; i++) grid[i].show();
 
-    // Draw answers
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
     for (let ans of placedAnswers) {
         let x = ans.i * w + w / 2;
         let y = ans.j * w + w / 2;
-
-        ctx.fillStyle = '#00ffcc'; // Text color
-
-        // Dynamic Font Size based on text length
-        let fontSize = 12;
+        ctx.fillStyle = '#00ffcc';
+        let fontSize = (ans.text.length > 8) ? 9 : 12;
         ctx.font = `bold ${fontSize}px "Outfit", sans-serif`;
-
-        // Simple fitting
-        if (ctx.measureText(ans.text).width > w - 4) {
-            fontSize = 9;
-            ctx.font = `bold ${fontSize}px "Outfit", sans-serif`;
-        }
-
         ctx.fillText(ans.text, x, y);
     }
 
-    // Start
-    ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
     ctx.fillRect(0, 0, w, w);
 
-    // Player
-    if (player) {
-        player.show();
-    }
+    if (player) player.show();
 }
 
 // Initial Setup
@@ -482,6 +338,12 @@ document.getElementById('inputQuestion').value = currentQuestion.question;
 document.getElementById('inputA').value = currentQuestion.answers[0];
 
 setTimeout(setup, 100);
-
-// Resize listener
 window.addEventListener('resize', setup);
+
+// Keyboard support for testing in browser
+window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp') movePlayer('up');
+    if (e.key === 'ArrowDown') movePlayer('down');
+    if (e.key === 'ArrowLeft') movePlayer('left');
+    if (e.key === 'ArrowRight') movePlayer('right');
+});
