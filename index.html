@@ -13,16 +13,18 @@
     <div class="container">
         <header>
             <h1>GPS Maze Runner</h1>
-            <div id="gps-status" class="gps-panel">
-                <p>Status: <span id="status-text" style="color: orange;">Menunggu GPS/Sensor...</span></p>
+            <div id="camera-panel" class="gps-panel">
+                <p>Status: <span id="status-text" style="color: yellow;">Siap Kamera..</span></p>
                 <div class="sensor-controls">
-                    <button id="permissionBtn" onclick="requestSensorPermission()">🔓 Izinkan Sensor (Wajib
-                        iOS)</button>
-                    <button id="startTrackingBtn" onclick="startGPS()">📍 MULAI GPS (Set Awal)</button>
+                    <button id="startCameraBtn" onclick="startOpticalTracking()">📸 MULAI NAVIGASI KAMERA</button>
                 </div>
-                <div class="sensor-data" style="margin-top: 10px; font-size: 0.8rem; color: #aaa;">
-                    <p>Kompas: <span id="compass-deg">-</span>° (<span id="compass-dir">-</span>)</p>
-                    <p>Langkah: <span id="step-count">0</span></p>
+
+                <!-- Video Preview & Debug Canvas -->
+                <div class="camera-container" style="margin-top: 10px; position: relative;">
+                    <video id="cameraFeed" autoplay playsinline
+                        style="width: 100px; height: 75px; border: 1px solid #00ffcc; transform: scaleX(-1);"></video>
+                    <canvas id="processCanvas" width="80" height="60" style="display: none;"></canvas>
+                    <div id="flow-debug" style="font-size: 0.8rem; color: #00ffcc;">dx: 0, dy: 0</div>
                 </div>
             </div>
         </header>

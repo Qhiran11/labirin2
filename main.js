@@ -41,7 +41,7 @@ class Player {
         let x = this.i * w + w / 2;
         let y = this.j * w + w / 2;
 
-        ctx.fillStyle = '#ff00ff'; 
+        ctx.fillStyle = '#ff00ff';
         ctx.beginPath();
         ctx.arc(x, y, w / 3, 0, Math.PI * 2);
         ctx.fill();
@@ -90,7 +90,7 @@ function checkAnswer() {
 
 function setup() {
     const wrapper = document.querySelector('.canvas-wrapper');
-    const availableHeight = window.innerHeight - 320; 
+    const availableHeight = window.innerHeight - 320;
     const availableWidth = wrapper.clientWidth - 20;
 
     let size = Math.min(availableWidth, availableHeight);
@@ -160,85 +160,147 @@ function movePlayer(direction) {
     if (player) player.move(direction);
 }
 
-// --- LOGIKA GPS TEROPTIMASI ---
-function startGPS() {
-    if (!navigator.geolocation) {
-        alert("Browser tidak mendukung Geolocation.");
-        return;
+// --- LOGIKA OPTICAL FLOW (Kamera Navigasi) ---
+let isCameraActive = false;
+let videoElement, processCtx, debugDiv;
+let prevFrameData = null;
+const COMPRESS_W = 40; // Analisis resolusi rendah untuk performa
+const COMPRESS_H = 30;
+const MOVE_THRESHOLD = 50; // Sensitivitas gerakan (total difference)
+const DIR_THRESHOLD = 2; // Ambang batas dx/dy
+
+async function startOpticalTracking() {
+    if (isCameraActive) return;
+
+    videoElement = document.getElementById('cameraFeed');
+    const canvas = document.getElementById('processCanvas');
+    debugDiv = document.getElementById('flow-debug');
+    processCtx = canvas.getContext('2d', { willReadFrequently: true }); // Optimasi baca piksel
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'environment', // Kamera belakang
+                width: { ideal: 320 },
+                height: { ideal: 240 },
+                frameRate: { ideal: 30 }
+            }
+        });
+        videoElement.srcObject = stream;
+        isCameraActive = true;
+
+        document.getElementById('startCameraBtn').style.display = 'none';
+        document.getElementById('status-text').innerText = "Kamera Aktif & Melacak!";
+
+        alert("Arahkan kamera ke lantai bertekstur/pola.\nGerakkan HP maju/mundur/kiri/kanan.");
+
+        requestAnimationFrame(trackMovement);
+    } catch (err) {
+        alert("Gagal akses kamera: " + err.message);
+        document.getElementById('status-text').innerText = "Error Kamera";
+        document.getElementById('status-text').style.color = 'red';
     }
-
-    const statusText = document.getElementById('status-text');
-    if (statusText) statusText.innerText = "Meminta Izin...";
-
-    const options = {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
-    };
-
-    watchId = navigator.geolocation.watchPosition(gpsSuccess, gpsError, options);
 }
 
-function gpsSuccess(pos) {
-    const crd = pos.coords;
-    const statusText = document.getElementById('status-text');
-    const accText = document.getElementById('accuracy-text');
+function trackMovement() {
+    if (!isCameraActive) return;
 
-    // 1. Tampilkan Akurasi
-    if (accText) accText.innerText = Math.round(crd.accuracy);
+    // 1. Gambar frame video ke canvas kecil (downscale)
+    processCtx.drawImage(videoElement, 0, 0, COMPRESS_W, COMPRESS_H);
+    const currentFrameData = processCtx.getImageData(0, 0, COMPRESS_W, COMPRESS_H);
 
-    // 2. Filter Akurasi (Abaikan jika sinyal buruk/loncat-loncat)
-    if (crd.accuracy > ACCURACY_THRESHOLD) {
-        if (statusText) {
-            statusText.innerText = "Sinyal Lemah...";
-            statusText.style.color = "orange";
+    if (prevFrameData) {
+        // 2. Bandingkan frame sekarang dengan frame sebelumnya
+        const movement = calculateOpticalFlow(prevFrameData.data, currentFrameData.data);
+
+        // 3. Update Debug Info
+        debugDiv.innerText = `dx: ${movement.dx.toFixed(1)}, dy: ${movement.dy.toFixed(1)}`;
+
+        // 4. Gerakkan Player jika threshold terpenuhi
+        // Note: Gerakan kamera ke kiri = Lantai bergerak ke kanan = Player gerak ke kiri
+        // Jadi arah gerakan sama dengan arah pergeseran kamera (relatif terhadap lantai)
+
+        const SENSITIVITY = 1.0;
+
+        // Batasi frekuensi gerakan agar tidak terlalu cepat
+        if (Date.now() - lastMoveTime > 300) {
+            let moveDir = "";
+
+            // Prioritaskan sumbu dengan gerakan terbesar
+            if (Math.abs(movement.dy) > Math.abs(movement.dx)) {
+                // Gerakan Vertikal
+                // Kamera maju (atas) -> Image flow ke bawah (dy positif) -> Player maju (Up)
+                // Cek ulang logika: Jika kamera maju, lantai di layar turun? Tidak, lantai "mendekat" tapi visual flow tergantung perspektif.
+                // Asumsi umum: Flow ke bawah = Kamera Maju. Flow ke atas = Kamera Mundur.
+                if (movement.dy > DIR_THRESHOLD) moveDir = 'up';
+                else if (movement.dy < -DIR_THRESHOLD) moveDir = 'down';
+            } else {
+                // Gerakan Horizontal
+                // Kamera kiri -> Flow ke kanan (dx positif) -> Player kiri
+                if (movement.dx > DIR_THRESHOLD) moveDir = 'left';
+                else if (movement.dx < -DIR_THRESHOLD) moveDir = 'right';
+            }
+
+            if (moveDir) {
+                movePlayer(moveDir);
+                lastMoveTime = Date.now();
+                // Reset prevFrame agar tidak menumpuk error drift
+                // prevFrameData = currentFrameData; 
+            }
         }
-        return; 
     }
 
-    if (statusText) {
-        statusText.innerText = "Lacak Aktif (Presisi)";
-        statusText.style.color = "#00ffcc";
-    }
-
-    // 3. Set Titik Awal (Hanya sekali klik)
-    if (startLat === null) {
-        startLat = crd.latitude;
-        startLon = crd.longitude;
-        alert("Titik Awal Terkunci! Silakan berjalan minimal 5 meter.");
-        return;
-    }
-
-    // 4. Kalkulasi Jarak (Haversine Approximation)
-    const dLatMeters = (crd.latitude - startLat) * 111320;
-    const dLonMeters = (crd.longitude - startLon) * 111320 * Math.cos(startLat * Math.PI / 180);
-
-    // 5. Konversi ke Grid (Gunakan pembulatan untuk smoothing)
-    let gridChangeX = Math.round(dLonMeters / METERS_PER_CELL);
-    let gridChangeY = Math.round(-dLatMeters / METERS_PER_CELL);
-
-    // 6. Update Posisi Pemain (Clamp agar tidak keluar labirin)
-    let newX = Math.max(0, Math.min(gridChangeX, cols - 1));
-    let newY = Math.max(0, Math.min(gridChangeY, rows - 1));
-
-    if (player && (player.i !== newX || player.j !== newY)) {
-        player.i = newX;
-        player.j = newY;
-        console.log(`GPS Move: ${player.i}, ${player.j}`);
-        checkAnswer();
-        draw();
-    }
+    prevFrameData = currentFrameData;
+    requestAnimationFrame(trackMovement);
 }
 
-function gpsError(err) {
-    const statusText = document.getElementById('status-text');
-    if (statusText) {
-        statusText.style.color = "red";
-        statusText.innerText = "GPS Error: " + err.message;
-    }
-}
-// --- END LOGIKA GPS ---
+let lastMoveTime = 0;
 
+// Algoritma Block Matching Sederhana (Hanya Center Block)
+function calculateOpticalFlow(oldPixels, newPixels) {
+    const W = COMPRESS_W;
+    const blockX = 10; // Titik mulai Sample Block
+    const blockY = 10;
+    const blockSize = 20; // Ukuran Block Sample
+
+    // Ambil sampel blok dari tengah frame lama
+    // Cari posisi blok tersebut yang paling cocok di frame baru
+
+    let bestDx = 0;
+    let bestDy = 0;
+    let minDiff = Infinity;
+
+    const searchRange = 8; // Jarak pencarian (pixel)
+
+    for (let dy = -searchRange; dy <= searchRange; dy++) {
+        for (let dx = -searchRange; dx <= searchRange; dx++) {
+
+            let diff = 0;
+            // Hitung perbedaan pixel (SAD - Sum of Absolute Differences)
+            for (let y = 0; y < blockSize; y++) {
+                for (let x = 0; x < blockSize; x++) {
+                    const oldIdx = ((blockY + y) * W + (blockX + x)) * 4; // Grayscale check only green channel
+                    const newIdx = ((blockY + y + dy) * W + (blockX + x + dx)) * 4;
+
+                    // Simple grayscale SAD (Using Green channel as proxy for luminance)
+                    const valOld = oldPixels[oldIdx + 1];
+                    const valNew = newPixels[newIdx + 1];
+
+                    diff += Math.abs(valOld - valNew);
+                }
+            }
+
+            if (diff < minDiff) {
+                minDiff = diff;
+                bestDx = dx;
+                bestDy = dy;
+            }
+        }
+    }
+
+    return { dx: bestDx, dy: bestDy };
+}
+// --- END LOGIKA OPTICAL FLOW ---
 function placeAnswers() {
     placedAnswers = [];
     let possibleCells = grid.filter(c => !(c.i === 0 && c.j === 0));
@@ -268,7 +330,7 @@ class Cell {
     constructor(i, j) {
         this.i = i;
         this.j = j;
-        this.walls = [true, true, true, true]; 
+        this.walls = [true, true, true, true];
         this.visited = false;
     }
 

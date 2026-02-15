@@ -170,19 +170,44 @@ footer {
     color: #000;
     width: 100%;
     margin-top: 5px;
-}
 
-#permissionBtn {
-    background-color: #00aaff;
-    color: white;
-    width: 100%;
-    margin-top: 5px;
-    display: block;
-    /* Tampilkan default, sembunyikan via JS jika tidak perlu */
-}
+    /* Camera Panel */
+    .camera-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 5px;
+        border-radius: 5px;
+    }
 
-.sensor-data {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 5px;
-    border-radius: 5px;
-}
+    #startCameraBtn {
+        background-color: #00ffcc;
+        color: #000;
+        font-weight: bold;
+        padding: 8px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        width: 100%;
+        margin-bottom: 5px;
+    }
+
+    #startCameraBtn:hover {
+        background-color: #00eba0;
+    }
+
+    #permissionBtn {
+        background-color: #00aaff;
+        color: white;
+        width: 100%;
+        margin-top: 5px;
+        display: block;
+        /* Tampilkan default, sembunyikan via JS jika tidak perlu */
+    }
+
+    .sensor-data {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 5px;
+        border-radius: 5px;
+    }
