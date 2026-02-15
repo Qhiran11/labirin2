@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<<<<<<< HEAD
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Maze Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Random Maze Generator</h1>
+        </header>
+
+        <div class="main-layout">
+            <aside class="sidebar">
+                <div class="input-group">
+                    <h3>Input Soal & Jawaban</h3>
+                    <label>Antanyaan:</label>
+                    <input type="text" id="inputQuestion" placeholder="Masukkan pertanyaan...">
+
+                    <label>Jawaban A (Benar):</label>
+                    <input type="text" id="inputA" placeholder="Jawaban Benar">
+
+                    <label>Jawaban B:</label>
+                    <input type="text" id="inputB" placeholder="Pilihan Salah 1">
+
+                    <label>Jawaban C:</label>
+                    <input type="text" id="inputC" placeholder="Pilihan Salah 2">
+
+                    <label>Jawaban D:</label>
+                    <input type="text" id="inputD" placeholder="Pilihan Salah 3">
+
+                    <button id="updateBtn" onclick="updateMazeData()">Update Maze</button>
+                    <button id="generateBtn" onclick="generateMaze()">Acak Ulang</button>
+                </div>
+                <div class="instructions">
+                    <p><small>Masukkan soal dan jawaban, lalu klik "Update Maze".</small></p>
+                </div>
+            </aside>
+
+            <main class="game-area">
+                <div class="canvas-wrapper">
+                    <canvas id="mazeCanvas"></canvas>
+                </div>
+
+                <div class="d-pad">
+                    <button class="d-btn up" onclick="movePlayer('up')">▲</button>
+                    <div class="d-row">
+                        <button class="d-btn left" onclick="movePlayer('left')">◀</button>
+                        <button class="d-btn down" onclick="movePlayer('down')">▼</button>
+                        <button class="d-btn right" onclick="movePlayer('right')">▶</button>
+                    </div>
+                </div>
+
+                <div id="question-container" class="question-box">
+                    <h2 id="question-text">Pertanyaan akan muncul di sini...</h2>
+                </div>
+            </main>
+        </div>
+
+        <footer>
+            <p>Built with Vanilla JS</p>
+        </footer>
+    </div>
+    <script src="main.js"></script>
+</body>
+
+=======
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tes Jalan + Izin GPS</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; padding: 0; background-color: #f0f0f0; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        /* Layar Utama (Disembunyikan dulu) */
+        #game-screen { display: none; width: 90%; max-width: 400px; }
+        .box { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .data { font-size: 1.5rem; font-weight: bold; color: #007bff; margin: 10px 0; }
+        
+        /* Layar Awal (Start Screen) */
+        #start-screen { background: white; padding: 30px; border-radius: 20px; width: 80%; max-width: 300px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        
+        button.start-btn { padding: 15px 30px; background: #007bff; color: white; border: none; border-radius: 50px; font-size: 1.2rem; cursor: pointer; font-weight: bold; width: 100%; }
+        button.reset-btn { padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; margin-top: 10px; }
+        
+        .error-msg { color: red; font-size: 0.9rem; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h2>📍 Izin Lokasi</h2>
+        <p>Aplikasi ini butuh akses GPS agar karakter bisa bergerak sesuai langkah kakimu.</p>
+        <button class="start-btn" onclick="mulaiPelacakan()">AKTIFKAN GPS</button>
+        <p id="error-text" class="error-msg"></p>
+    </div>
+
+    <div id="game-screen">
+        <h1>🏃 Mode Jalan</h1>
+        
+        <div class="box">
+            <p>Jarak Tempuh:</p>
+            <div id="jarak" class="data">0 Meter</div>
+        </div>
+
+        <div class="box">
+            <p>Akurasi GPS:</p>
+            <div id="akurasi" style="color: green;">Menunggu sinyal...</div>
+        </div>
+
+        <p style="font-size: 0.8rem; color: #666;">Jalanlah ke area terbuka agar angka berubah.</p>
+        <button class="reset-btn" onclick="resetTitikAwal()">Reset Titik Awal</button>
+    </div>
+
+    <script>
+        let startLat = null;
+        let startLon = null;
+        let watchId = null;
+
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const errorText = document.getElementById('error-text');
+        const jarakEl = document.getElementById('jarak');
+        const akurasiEl = document.getElementById('akurasi');
+
+        function mulaiPelacakan() {
+            if (!navigator.geolocation) {
+                alert("Browser HP kamu tidak mendukung Geolocation!");
+                return;
+            }
+
+            // Minta izin dan mulai tracking
+            const options = {
+                enableHighAccuracy: true, // Wajib ON untuk jalan kaki
+                timeout: 10000,
+                maximumAge: 0
+            };
+
+            // watchPosition otomatis meminta izin popup
+            watchId = navigator.geolocation.watchPosition(success, error, options);
+        }
+
+        function success(pos) {
+            // Jika berhasil dapat izin, ganti layar
+            startScreen.style.display = 'none';
+            gameScreen.style.display = 'block';
+
+            const crd = pos.coords;
+            
+            // Cek akurasi (semakin kecil angkanya, semakin bagus)
+            akurasiEl.innerText = `Akurasi: +/- ${Math.round(crd.accuracy)} meter`;
+
+            // Simpan titik awal jika belum ada
+            if (startLat === null) {
+                startLat = crd.latitude;
+                startLon = crd.longitude;
+            }
+
+            // Hitung jarak
+            const jarak = hitungJarak(startLat, startLon, crd.latitude, crd.longitude);
+            jarakEl.innerText = jarak.toFixed(1) + " Meter";
+        }
+
+        function error(err) {
+            // Menangani jika user menolak
+            errorText.style.display = 'block';
+            if (err.code === 1) { // PERMISSION_DENIED
+                errorText.innerHTML = "❌ <b>Akses Ditolak!</b><br>Mohon reset izin lokasi di pengaturan browser (ikon gembok di sebelah alamat web).";
+            } else if (err.code === 2) { // POSITION_UNAVAILABLE
+                errorText.innerHTML = "❌ <b>Sinyal Lemah!</b><br>Coba pindah ke luar ruangan.";
+            } else {
+                errorText.innerText = "Error: " + err.message;
+            }
+        }
+
+        // Rumus Haversine (Jarak Bumi)
+        function hitungJarak(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function resetTitikAwal() {
+            startLat = null;
+            startLon = null;
+            jarakEl.innerText = "0 Meter";
+            alert("Titik 0 di-reset!");
+        }
+    </script>
+</body>
+>>>>>>> df8f9765a625832c60977694a3be6d64c523b0c9
+</html>
