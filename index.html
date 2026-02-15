@@ -14,9 +14,16 @@
         <header>
             <h1>GPS Maze Runner</h1>
             <div id="gps-status" class="gps-panel">
-                <p>Status: <span id="status-text" style="color: orange;">Menunggu GPS...</span></p>
-                <p>Akurasi: <span id="accuracy-text">-</span> meter</p>
-                <button id="startTrackingBtn" onclick="startGPS()">📍 MULAI (Set Titik Awal)</button>
+                <p>Status: <span id="status-text" style="color: orange;">Menunggu GPS/Sensor...</span></p>
+                <div class="sensor-controls">
+                    <button id="permissionBtn" onclick="requestSensorPermission()">🔓 Izinkan Sensor (Wajib
+                        iOS)</button>
+                    <button id="startTrackingBtn" onclick="startGPS()">📍 MULAI GPS (Set Awal)</button>
+                </div>
+                <div class="sensor-data" style="margin-top: 10px; font-size: 0.8rem; color: #aaa;">
+                    <p>Kompas: <span id="compass-deg">-</span>° (<span id="compass-dir">-</span>)</p>
+                    <p>Langkah: <span id="step-count">0</span></p>
+                </div>
             </div>
         </header>
 
