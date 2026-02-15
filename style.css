@@ -146,46 +146,28 @@ footer {
     }
 }
 
-.d-pad {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 1rem 0;
-    gap: 10px;
-}
-
-.d-row {
-    display: flex;
-    gap: 10px;
-}
-
-.d-btn {
-    width: 60px;
-    height: 60px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px solid var(--accent-color);
+/* GPS Panel */
+.gps-panel {
+    background: rgba(0, 0, 0, 0.6);
+    padding: 15px;
     border-radius: 10px;
-    color: #fff;
-    font-size: 1.5rem;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-    /* Prevent text selection on rapid tapping */
-    touch-action: manipulation;
-    /* Prevent zoom */
-    font-weight: bold;
+    margin-bottom: 20px;
+    border: 1px solid var(--accent-color);
+    width: 100%;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
-.d-btn:active {
-    background: var(--accent-color);
+.gps-panel p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+}
+
+#startTrackingBtn {
+    background-color: #ffcc00;
+    /* Yellow/Orange for visibility */
     color: #000;
-}
-
-/* Hide D-Pad on large screens if keyboard is preferred, but user said "web ini berjalan di hp" so keep it visible or show only on mobile */
-@media (min-width: 1024px) {
-    .d-pad {
-        display: none;
-    }
+    width: 100%;
+    margin-top: 10px;
 }

@@ -212,31 +212,91 @@ function movePlayer(direction) {
     }
 }
 
-// Keyboard controls
-window.addEventListener('keydown', (e) => {
-    switch (e.key) {
-        case 'ArrowUp':
-        case 'w':
-        case 'W':
-            movePlayer('up');
-            break;
-        case 'ArrowRight':
-        case 'd':
-        case 'D':
-            movePlayer('right');
-            break;
-        case 'ArrowDown':
-        case 's':
-        case 'S':
-            movePlayer('down');
-            break;
-        case 'ArrowLeft':
-        case 'a':
-        case 'A':
-            movePlayer('left');
-            break;
+// GPS Variables
+let startLat = null;
+let startLon = null;
+let watchId = null;
+const METERS_PER_CELL = 2; // Movement scale: 2 meters = 1 cell
+
+function startGPS() {
+    if (!navigator.geolocation) {
+        alert("Browser tidak mendukung Geolocation.");
+        return;
     }
-});
+
+    const statusText = document.querySelector('#status-text'); // Fix selector if needed
+    if (statusText) statusText.innerText = "Meminta Izin...";
+
+    const options = {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+    };
+
+    watchId = navigator.geolocation.watchPosition(gpsSuccess, gpsError, options);
+}
+
+function gpsSuccess(pos) {
+    const crd = pos.coords;
+
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+        statusText.innerText = "Lacak Aktif";
+        statusText.style.color = "#00ffcc";
+    }
+
+    const accText = document.getElementById('accuracy-text');
+    if (accText) accText.innerText = Math.round(crd.accuracy);
+
+    // Set start point if not set
+    if (startLat === null) {
+        startLat = crd.latitude;
+        startLon = crd.longitude;
+        alert("Titik Awal Ditetapkan! Silakan berjalan.");
+    }
+
+    // Calculate distance from start
+    // 1 Degree Latitude ~ 111,320 meters
+    const dLatMeters = (crd.latitude - startLat) * 111320;
+
+    // 1 Degree Longitude ~ 111,320 * cos(latitude) meters
+    const dLonMeters = (crd.longitude - startLon) * 111320 * Math.cos(startLat * Math.PI / 180);
+
+    // Convert meters to grid cells
+    // +Lat is North (Up in Map), but Y is Down in Canvas. So invert Lat delta.
+    // +Lon is East (Right in Map), same as X in Canvas.
+
+    // Using Math.round to snap to grid
+    let gridChangeX = Math.round(dLonMeters / METERS_PER_CELL);
+    let gridChangeY = Math.round(-dLatMeters / METERS_PER_CELL); // Invert Y
+
+    // Current player pos is relative to start (0,0)
+    let newX = Math.max(0, Math.min(gridChangeX, cols - 1));
+    let newY = Math.max(0, Math.min(gridChangeY, rows - 1));
+
+    if (player) {
+        player.i = newX;
+        player.j = newY;
+
+        checkAnswer();
+        draw();
+    }
+}
+
+function gpsError(err) {
+    const statusText = document.getElementById('status-text');
+    if (statusText) {
+        statusText.style.color = "red";
+        if (err.code === 1) {
+            statusText.innerText = "Izin Ditolak";
+        } else if (err.code === 2) {
+            statusText.innerText = "Sinyal Hilang";
+        } else {
+            statusText.innerText = "Error GPS";
+        }
+    }
+    console.warn('GPS Error(' + err.code + '): ' + err.message);
+}
 
 
 function placeAnswers() {
